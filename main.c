@@ -39,48 +39,43 @@ uint8_t table[] = {	255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 
 					255, 255, 255, 255, 255, 255, 255,		14, 255, 255, 255, 7, 255, 4, 1, 255,
 					255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255};
 					
-uint8_t passcode[] = {0x12, 0x34, 0x56};
-uint8_t passcodeInput[3];
+uint8_t passcode[] = {1, 2, 3, 4, 5, 6};
+uint8_t passcodeInput[6];
+
+void triggerSiren() {
+	PORTB |= 0x20;								// turn on the siren LED ( PORTB || 0x20 )
+}
+
+void triggerStrobe() {
+	for (uint8_t i=0; i<5; i++) {
+		PORTB ^= (1<<3);						// toggle strobe LED on and off 5 times
+		_delay_ms(500);							// 5Hz delay
+	}
+}
+
+void triggerZone(uint8_t zone) {
+	PORTB |= zone;								// turn on the triggered Zone LED
+	triggerSiren();								// turn on the siren LED ( PORTB || 0x20 )
+	triggerStrobe();							// blink strobe light at 5Hz for 5 times
+}
 
 void errorBlink() {
 	uint8_t t = PINB;
-	PORTB = 0x00;
-	_delay_ms(1000);
-	PORTB = 0xFF;
-	_delay_ms(1000);
-	PORTB = 0x00;
-	_delay_ms(1000);
-	PORTB = 0xFF;
-	_delay_ms(1000);
+	
+	for (uint8_t i=0; i<2; i++) {
+		PORTB = 0x00;
+		_delay_ms(1000);
+		PORTB = 0xFF;
+		_delay_ms(1000);
+	}
+	
 	PORTB = t;
 }
 
 void passblink() {
-	PORTB |= 0x20;
-	_delay_ms(500);
-	PORTB &= 0xDF;
-	_delay_ms(500);
-	PORTB |= 0x20;
-}
-
-void passcodeVerification() {
-	for (uint8_t K=0; K<3; K++) {
-		if (passcode[K] != passcodeInput[K]) {
-			errorBlink();
-			PORTB &= 0x0F;
-			if (PORTB == 15) {
-				PORTB |= 0x90;
-			}
-			return;
-		}
-	}
-	PORTB <<= 4;
-	PORTB = ~PORTB;
-	PORTB >>= 4;
-	
-	if (PORTB == 15) { PORTB |= 0x90; } else { PORTB |= 0x80; }
-	
-	output = 0x00;
+	PORTB &= 0x0F;
+	PORTB |= output;
+	_delay_ms(50);
 }
 
 void released() {
@@ -90,60 +85,85 @@ void released() {
 	}
 }
 
-void combine() {
-	if (flag == 1) {
-		
-		return;
-	}
-		
-	
-}
-
 void colFound() {
 	released();
-	passblink();
 	
-	if (flag == 0) { output = *(table+temp2); return; }
-		
-	if (flag == 1) { output = *(table+temp2) * 16; return; }
-		
-	if (flag == 2) { output += *(table+temp2); }
+	output = *(table+temp2);
+	PORTB |= output;
 }
 
 void ReadKP() {
-	for (uint8_t j=0; j<4; j++) {
-		temp = cols[j];
+	for (uint8_t i=0; i<4; i++) {
+		temp = cols[i];
 		PORTC = temp;
 		_delay_ms(50);
 		temp2 = PINC;
 		if (temp != temp2) { colFound(); return; }
 		
-		if (j == 3) { j = -1; }
+		if (i == 3) { i = -1; }
 	}
 }
 
-
-void ReadTwo() {
-	output = 0x00;
-	flag = 1;
-	ReadKP();
-	flag = 2;
-	_delay_ms(50);
-	ReadKP();
-}
-
-void passcodeEntry() {
-	for (uint8_t i=0; i<3; i++) {
+void enterNewPasscode() {
+	for (uint8_t i=0; i < 6; i++) {						// loop 6 times to read 6 digits of passcode
+		ReadKP();
 		
-		ReadTwo();
+		if (output>9) { errorBlink(); return; }			// if in disarmed state, and any zone keys or */# is pressed
+			
 		passcodeInput[i] = output;
 	}
-	flag = 0;
+	
+	for (uint8_t i=0; i < 6; i++) {
+		passcode[i] = passcodeInput[i];
+	}
 }
 
-void display() {
-	PORTB = output;
-	_delay_ms(1000);
+void passcodeVerification(uint8_t stateFlg) {
+	for (uint8_t i=0; i<6; i++) {
+		if (passcode[i] != passcodeInput[i]) {
+			errorBlink();
+			return;
+		}
+	}
+	
+	if (stateFlg == 1) {
+		output = 0x40;									// turn on the armed state LED
+		PORTB = output;									// armed state
+		return;
+	}
+	
+	output = 0x80;										// turn on the disarmed state LED
+	PORTB = output;										// disarmed state
+}
+
+void passcodeEntry(uint8_t state) {
+	for (uint8_t i=0; i < 6; i++) {						// loop 6 times to read 6 digits of passcode
+		ReadKP();
+		
+		if (state == 1) {								// if in armed state, check if any zone keys are pressed ( A, B, C, D )
+			switch (output) {
+				case 10:
+					triggerZone(0xB0);
+					return;
+				case 11:
+					triggerZone(0x90);
+					return;
+				case 12:
+					triggerZone(0x80);
+					return;
+				case 13:
+					triggerZone(0x50);
+					return;		
+			}
+		}
+		
+		if (output == 15) {								// if # is pressed change passcode
+			enterNewPasscode();
+			return;
+		}
+		
+		passcodeInput[i] = output;
+	}
 }
 
 int main(void)
@@ -156,22 +176,24 @@ int main(void)
 	PORTC = temp;		// setting columns to idle
 	
 	temp = PINC;
-	PORTB = 0x9F;   // armed
+	output = 0x80;
+	PORTB = output;   // disarmed state
 	
 	while (1) {
-		flag = 0;
-		ReadKP();
-		_delay_ms(50);
+		output = PINB;
 		
-		if (output == 15) {
-			PORTB |= 0x20;
-			
-			passcodeEntry();
-			
-			passcodeVerification();
+		switch (output) {
+			case 0x80:							// is in disarmed state
+				passcodeEntry(0);				// ask to enter passcode and store it in passcodeEntry Array
+				passcodeVerification(1);		// verify passcode with change state flag of armed state
+				break;
+				
+			case 0x40:							// is in armed state
+				passcodeEntry(1);				// ask to enter passcode and store it in passcodeEntry Array
+				passcodeVerification(0);		// verify passcode with change state flag of disarmed state
+				break;	
 		}
 	}
 	
 	while (1);
 }
-
