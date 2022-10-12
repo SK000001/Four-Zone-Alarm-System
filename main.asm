@@ -1,13 +1,9 @@
-; ****************************************************
-; EEET2256 - Laboratory 3B (2022) Template
-; Author: Dr. Glenn Matthews
-; Last Updated:  18/08/2022 10:58:04 AM
-; lab3b_template.asm
-;*****************************************************
 ; Define variables.
 .def  temp  = r16
 .def temp2 = r17
-.def passFlg = r25
+.def output = r18
+.def flg = r19
+.def count = r20
 
 .equ SP = 0xDF
 
@@ -15,46 +11,12 @@
 reset:
    rjmp start
 
-;***********************************************************
-; EEET2256 Laboratory 3B
-;
-; This program reads two numbers from a key pad
-;*******************************
 ; Program starts here after Reset
 start:
 	LDI  TEMP,  SP		; Init Stack pointer
 	OUT  0x3D,  TEMP
 
-    CALL Init           ; Initialise the system.
-
-loop:
-	Rcall ReadKP			; Value returned in R16 (temp)
-                        	
-	Rcall Delay
-
-    RJMP loop
-
-;************************************************************************
-;
 Init:
-; uses:    R16
-; returns: nothing
-;
-;initialise the 16-key keypad connected to Port C
-; this assumes that a 16-key alpha numeric keypad is connected to
-;port C as follows (see keypad data):
-; key pad   function 		   J2 pin
-;  1      Row 1, Keys 1, 2, 3, A       1   PC0
-;  2      Row 2, Keys 4, 5, 6, B       2   PC1
-;  3      Row 3, Keys 7, 8, 9, C       3   PC2
-;  4      Row 4, Keys *, 0, #, D       4   PC3
-;  5      Column 1, Keys 1, 4, 7, *    5   PC4
-;  6      Column 2, Keys 2, 5, 8, 0    6   PC5
-;  7      Column 3, Keys 3, 6, 9, #    7   PC6
-;  7      Column 4, Keys A, B, C, D    8   PC7
-
-	ldi passFlg, 0x01 
-
 	.equ colIdle = 0xff
 
 	; hex values for columns
@@ -63,38 +25,151 @@ Init:
 	.equ col3 = 0xbf
 	.equ col4 = 0x7f
 
-	; first 4 out and last 4 in
-	ldi temp, 0xf0
-	out DDRC, temp
-
 	ldi temp, 0xff
 	out DDRB, temp
 
+	ldi temp, 0xf0
+	out DDRC, temp
+
 	ldi temp, 0x0f
 	out PORTC, temp
-
-	out PORTB, temp
 
 	; Set the pull-up resistor values on PORTC.
 	ldi temp, colIdle
 	out PORTC, temp
 
-  	RET	
-;************************************************************************
+	in temp, PINC
+	ldi output, 0x80
+	out PORTB, output	// disarmed state
 
-;
-;********************************************************************
-; ReadKP will determine which key is pressed and return that key in Temp
-; The design of the keypad is such that each row is normally pulled high
-; by the internal pullups that are enabled at init time
-;
-; When a key is pressed contact is made between the corresponding row and column.
-; To determine which key is pressed each column is forced low in turn
-; and software tests which row has been pulled low at micro input pins
-;
-; To avoid contact bounce the program must include a delay to allow
-; the signals time to settle
-;
+loop:
+	in output, PINB
+
+	ldi count, 0
+	cpi output, 0x80
+	breq passcodeEntryDisarm
+
+	cpi output, 0x41
+	brlo passcodeEntryArm
+
+    RJMP loop
+
+passcodeEntryDisarm:
+	cpi count, 6
+	breq passcodeVerification
+
+	Rcall ReadKp
+
+	cpi output, 15
+	breq passcodeReset
+
+	cpi output, 10
+	brge disarmedState
+
+	push output // push to passcode Input
+	inc count
+
+passcodeReset:
+	rjmp loop
+
+disarmedState:
+	ldi output, 0x80
+	out PORTB, output
+	rjmp loop
+
+passcodeEntryArm:
+	cpi count, 6
+	breq passcodeVerification
+
+	Rcall ReadKp
+	
+	in temp, PINB
+	ldi temp2, 16
+	mul temp, temp2
+
+	ldi temp2, 0
+	cpi output, 10
+	breq triggerZone
+
+	ldi temp2, 1
+	cpi output, 11
+	breq triggerZone
+
+	ldi temp2, 2
+	cpi output, 12
+	breq triggerZone
+
+	ldi temp2, 3
+	cpi output, 13
+	breq triggerZone
+
+	push output // push to passcode Input
+	inc count
+
+passcodeVerification:
+	ldi flg, 0x00
+	rjmp loop
+
+PreTriggerZone:				; temp = prevZones and temp2 = Zone
+	cpi flg, 1
+	breq TriggerZone
+
+	ldi flg, 0x20
+	in output, PORTB
+	eor output, flg
+	out PORTB, output
+
+	ldi flg, 1
+
+TriggerZone:
+	ldi count, 10
+	rcall triggerStrobe
+	
+	ldi count, 0xF0
+	in output, PORTB
+	and output, count
+
+	lsr temp
+	lsr temp 
+	lsr temp
+	lsr temp
+
+	or output, temp
+
+	ldi count, 1
+
+TriggerCertainZone:
+	cpi temp2, 0
+	breq postTriggerZone
+
+	lsl count
+
+	dec temp2
+	rjmp TriggerCertainZone
+
+postTriggerZone:
+	eor output, count
+	out PORTB, output
+	
+	rjmp loop
+
+triggerStrobe:
+	in output, PORTB
+	push flg
+	ldi flg, 16
+
+	eor output, flg
+	out PORTB, output
+
+	pop flg
+
+	rcall Delay
+
+	dec count
+	cpi count, 0
+	brne triggerStrobe
+	RET
+	
 
 ReadKP:
 	; scan col1
@@ -138,114 +213,6 @@ ReadKP:
 colFound:
 	call released
 	call H2DEC
-
-	call checkCases
-
-	RET
-
-checkCases:
-	ldi r20, 6			; counter
-
-	ldi temp2, 10
-	cp temp, temp2		; Zone A sensor trigger
-	ldi temp2, 0x08
-	breq triggerZone
-
-
-	ldi temp2, 11
-	cp temp, temp2		; Zone B sensor trigger
-	ldi temp2, 0x04
-	breq triggerZone
-
-
-	ldi temp2, 12
-	cp temp, temp2		; Zone C sensor trigger
-	ldi temp2, 0x02
-	breq triggerZone
-
-
-	ldi temp2, 13
-	cp temp, temp2		; Zone D sensor trigger
-	ldi temp2, 0x01
-	breq triggerZone
-
-
-	ldi temp2, 15
-	cp temp, temp2		; arm / disarm the system
-	ldi temp2, 0x0F
-	breq disarm_Arm
-
-	RET
-
-triggerZone:
-	cp r20, r0
-	breq toloop
-
-	in temp, PORTB
-	eor temp, temp2
-	out PORTB, temp
-	call Delay
-
-	dec r20
-	rjmp triggerZone
-
-toloop:
-	rjmp loop
-
-disarm_Arm:
-	ldi r20, 3
-	ldi r21, 2
-	rjmp passcodeEntry
-
-passcodeEntry:
-	cp r20, r0
-
-	breq passVerify
-
-	RCALL	ReadKP
-	PUSH	temp
-	RCALL	ReadKP
-	POP  temp2
-	RCALL	combine
-
-	dec r20
-	rjmp passcodeEntry
-
-combine:
-	ldi r22, 16
-	mul temp2, r22
-	add temp2, temp
-	push temp2
-	
-	RET
-
-passVerify:
-	pop temp
-
-	LDI ZL, LOW(passcode << 1)			; r30 to lower pointer of passcode
-	LDI ZH, HIGH(passcode << 1)			; r31 to higher pointer of passcode
-
-	ADD ZL, r21					; r30 = r30 + r21
-
-	lpm temp2, Z
-
-	cp temp, temp2
-	brne toloop
-
-	cp r21, r0
-	breq toloop
-
-	dec r21
-	rjmp passVerify
-
-stateChange:
-	ldi temp, 0x8F
-	out PORTB, temp
-	rjmp toloop
-
-Display:
-	lpm temp, Z
-	out PORTB, temp
 	RET
 
 released:
@@ -261,24 +228,10 @@ H2Dec:
 	ADD ZL, temp2					; r30 = r30 + r17
 	ADC ZH, r0						; r31 = r31 + r0 + carryflg
 
-	lpm temp, Z
+	lpm output, Z
 
 	RET
 
-;************************************************************************
-;
-; Takes whatever is in the Temp register and outputs it to the LEDs
-;*************************************
-;
-; Delay routine
-;
-; this has an inner loop and an outer loop. The delay is approximately
-; equal to 256*256*number of inner loop instruction cycles.
-; You can vary this by changing the initial values in the accumulator.
-; If you need a much longer delay change one of the loop counters
-; to a 16-bit register such as X or Y.
-;
-;*************************************
 Delay:
 	PUSH R16			; Save R16 and 17 as we're going to use them
 	PUSH R17			; as loop counters
@@ -300,6 +253,9 @@ L2:
 	POP R17
 	POP R16
     RET
+
+cols:
+	.db 0xef, 0xdf, 0xbf, 0x7f
 		
 tbl:
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
@@ -320,4 +276,7 @@ tbl:
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 
 passcode:
-	.db 0x12, 0x34, 0x56, 0
+	.db 1, 2, 3, 4, 5, 6
+
+passcodeInput:
+	.db 0, 0, 0, 0, 0, 0
