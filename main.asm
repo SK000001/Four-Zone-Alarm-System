@@ -11,7 +11,6 @@
 reset:
    rjmp start
 
-; Program starts here after Reset
 start:
 	LDI  TEMP,  SP		; Init Stack pointer
 	OUT  0x3D,  TEMP
@@ -69,6 +68,8 @@ passcodeEntryDisarm:
 	push output // push to passcode Input
 	inc count
 
+	rjmp passcodeEntryDisarm
+
 passcodeReset:
 	rjmp loop
 
@@ -105,6 +106,8 @@ passcodeEntryArm:
 
 	push output // push to passcode Input
 	inc count
+
+	rjmp passcodeEntryArm
 
 passcodeVerification:
 	ldi flg, 0x00
