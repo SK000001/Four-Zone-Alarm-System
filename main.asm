@@ -1,9 +1,11 @@
 ; Define variables.
 .def  temp  = r16
 .def temp2 = r17
-.def output = r18
-.def flg = r19
-.def count = r20
+.def t = r18
+.def output = r19
+.def flg = r20
+.def count = r24
+.def flag = r25
 
 .equ SP = 0xDF
 
@@ -38,18 +40,20 @@ Init:
 	out PORTC, temp
 
 	in temp, PINC
-	ldi output, 0x40
+	ldi output, 0x80
 	out PORTB, output	// disarmed state
 
 loop:
 	in output, PINB
 
 	ldi count, 0
+	ldi flg, 0
 	cpi output, 0x80
 	breq passcodeEntryDisarm
 
+	ldi flg, 1
 	cpi output, 0x40
-	brlo passcodeEntryArm
+	brge passcodeEntryArm
 
     RJMP loop
 
@@ -73,36 +77,32 @@ passcodeEntryDisarm:
 passcodeReset:
 	rjmp loop
 
-disarmedState:
-	ldi output, 0x80
-	out PORTB, output
-	rjmp loop
-
 passcodeEntryArm:
+	in t, PINB
+	ldi temp, 16
+	mul t, temp
+	clr temp
+
 	cpi count, 6
 	breq passcodeVerification
 
 	Rcall ReadKp
-	
-	in temp, PINB
-	ldi temp2, 16
-	mul temp, temp2
 
 	ldi temp2, 0
 	cpi output, 10
-	breq triggerZone1
+	breq PreTriggerZone
 
 	ldi temp2, 1
 	cpi output, 11
-	breq triggerZone2
+	breq PreTriggerZone
 
 	ldi temp2, 2
 	cpi output, 12
-	breq triggerZone3
+	breq PreTriggerZone
 
 	ldi temp2, 3
 	cpi output, 13
-	breq triggerZone4
+	breq PreTriggerZone
 
 	push output // push to passcode Input
 	inc count
@@ -110,64 +110,45 @@ passcodeEntryArm:
 	rjmp passcodeEntryArm
 
 passcodeVerification:
-	ldi flg, 0x00
+	ldi flag, 0
+	cpi flg, 0
+	breq armedState
+
+	rjmp disarmedState
+
+armedState:
+	ldi output, 0x40
+	out PORTB, output
 	rjmp loop
 
-PreTriggerZone:				; temp = prevZones and temp2 = Zone
-	cpi flg, 1
+disarmedState:
+	ldi output, 0x80
+	out PORTB, output
+	rjmp loop
+
+PreTriggerZone:				; t = prevZones and temp2 = Zone
+	cpi flag, 1
 	breq TriggerZone
 
-	ldi flg, 0x20
+	ldi flag, 0x20
 	in output, PORTB
-	eor output, flg
+	eor output, flag
 	out PORTB, output
 
-	ldi flg, 1
-
-TriggerZone1:
-	rcall triggerStrobe
-	ldi temp, 0
-	ldi temp, 0x41
-	out PORTB, temp
-
-	rjmp loop
-
-TriggerZone2:
-	rcall triggerStrobe
-	ldi temp, 0
-	ldi temp, 0x42
-	out PORTB, temp
-
-	rjmp loop
-
-TriggerZone3:
-	rcall triggerStrobe
-	ldi temp, 0
-	ldi temp, 0x44
-	out PORTB, temp
-
-	rjmp loop
-
-TriggerZone4:
-	rcall triggerStrobe
-	ldi temp, 0
-	ldi temp, 0x48
-	out PORTB, temp
-
-	rjmp loop
+	ldi flag, 1
 
 TriggerZone:
 	ldi count, 10
-	rcall triggerStrobe
+	call triggerStrobe
 	
 	ldi count, 0xF0
 	in output, PORTB
 	and output, count
 
-	lsr temp
-	lsr temp 
-	lsr temp
-	lsr temp
+	lsr t
+	lsr t
+	lsr t
+	lsr t
 
 	or output, temp
 
@@ -185,23 +166,25 @@ TriggerCertainZone:
 postTriggerZone:
 	eor output, count
 	out PORTB, output
+
+	in output, PINB
 	
 	rjmp loop
 
 triggerStrobe:
 	in output, PORTB
-	push flg
-	ldi flg, 16
+	push flag
+	ldi flag, 16
 
-	eor output, flg
+	eor output, flag
 	out PORTB, output
 
-	pop flg
+	pop flag
 
 	rcall Delay
 
 	dec count
-	cpi count, 0
+	cpi count, 1
 	brne triggerStrobe
 	RET
 	
@@ -248,6 +231,7 @@ ReadKP:
 colFound:
 	call released
 	call H2DEC
+
 	RET
 
 released:
@@ -264,6 +248,15 @@ H2Dec:
 	ADC ZH, r0						; r31 = r31 + r0 + carryflg
 
 	lpm output, Z
+
+	in temp, PORTB
+	ldi temp2, 0xF0
+	and temp, temp2
+	out PORTB, temp
+	nop
+	in temp, PORTB
+	or temp, output
+	out PORTB, temp
 
 	RET
 
@@ -300,14 +293,14 @@ tbl:
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
-.db 255, 255, 255, 255, 255, 255, 255,  13, 255, 255, 255,  12, 255,  11,  10, 255
+  .db 255, 255, 255, 255, 255, 255, 255, 13, 255, 255, 255,   12, 255, 11, 10,  255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
-.db 255, 255, 255, 255, 255, 255, 255,  15, 255, 255, 255,   9, 255,   6,   3, 255
+  .db 255, 255, 255, 255, 255, 255, 255, 15, 255, 255, 255,    9, 255, 6, 3,   255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
-.db 255, 255, 255, 255, 255, 255, 255,   0, 255, 255, 255,   8, 255,   5,   2, 255
-.db 255, 255, 255, 255, 255, 255, 255,  14, 255, 255, 255,   7, 255,   4,   1, 255
+  .db 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255,    8, 255, 5, 2,   255
+  .db 255, 255, 255, 255, 255, 255, 255, 14, 255, 255, 255,    7, 255, 4, 1,   255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 
 passcode:
