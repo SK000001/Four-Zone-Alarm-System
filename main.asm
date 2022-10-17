@@ -38,7 +38,7 @@ Init:
 	out PORTC, temp
 
 	in temp, PINC
-	ldi output, 0x80
+	ldi output, 0x40
 	out PORTB, output	// disarmed state
 
 loop:
@@ -48,7 +48,7 @@ loop:
 	cpi output, 0x80
 	breq passcodeEntryDisarm
 
-	cpi output, 0x41
+	cpi output, 0x40
 	brlo passcodeEntryArm
 
     RJMP loop
@@ -90,19 +90,19 @@ passcodeEntryArm:
 
 	ldi temp2, 0
 	cpi output, 10
-	breq triggerZone
+	breq triggerZone1
 
 	ldi temp2, 1
 	cpi output, 11
-	breq triggerZone
+	breq triggerZone2
 
 	ldi temp2, 2
 	cpi output, 12
-	breq triggerZone
+	breq triggerZone3
 
 	ldi temp2, 3
 	cpi output, 13
-	breq triggerZone
+	breq triggerZone4
 
 	push output // push to passcode Input
 	inc count
@@ -123,6 +123,38 @@ PreTriggerZone:				; temp = prevZones and temp2 = Zone
 	out PORTB, output
 
 	ldi flg, 1
+
+TriggerZone1:
+	rcall triggerStrobe
+	ldi temp, 0
+	ldi temp, 0x41
+	out PORTB, temp
+
+	rjmp loop
+
+TriggerZone2:
+	rcall triggerStrobe
+	ldi temp, 0
+	ldi temp, 0x42
+	out PORTB, temp
+
+	rjmp loop
+
+TriggerZone3:
+	rcall triggerStrobe
+	ldi temp, 0
+	ldi temp, 0x44
+	out PORTB, temp
+
+	rjmp loop
+
+TriggerZone4:
+	rcall triggerStrobe
+	ldi temp, 0
+	ldi temp, 0x48
+	out PORTB, temp
+
+	rjmp loop
 
 TriggerZone:
 	ldi count, 10
@@ -268,14 +300,14 @@ tbl:
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
-  .db 255, 255, 255, 255, 255, 255, 255, 13, 255, 255, 255,   12, 255, 11, 10,  255
+.db 255, 255, 255, 255, 255, 255, 255,  13, 255, 255, 255,  12, 255,  11,  10, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
-  .db 255, 255, 255, 255, 255, 255, 255, 15, 255, 255, 255,    9, 255, 6, 3,   255
+.db 255, 255, 255, 255, 255, 255, 255,  15, 255, 255, 255,   9, 255,   6,   3, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
-  .db 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255,    8, 255, 5, 2,   255
-  .db 255, 255, 255, 255, 255, 255, 255, 14, 255, 255, 255,    7, 255, 4, 1,   255
+.db 255, 255, 255, 255, 255, 255, 255,   0, 255, 255, 255,   8, 255,   5,   2, 255
+.db 255, 255, 255, 255, 255, 255, 255,  14, 255, 255, 255,   7, 255,   4,   1, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 
 passcode:
