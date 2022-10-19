@@ -1,10 +1,3 @@
-/*
- * 3b run c.c
- *
- * Created: 15/09/2022 8:25:36 PM
- * Author : 61481
- */ 
-
 #include <avr/io.h>
 #define F_CPU 12000000UL
 #include <util/delay.h>
@@ -65,26 +58,20 @@ void triggerZone(uint8_t zone, uint8_t prevZones) {
 }
 
 void errorBlink() {
-	uint8_t t = pinLed;
+	uint8_t t = pinLed;					// save the current led values to use after blink
 	
 	for (uint8_t i=0; i<2; i++) {
-		portLed = 0x00;
+		portLed = 0x00;					// all leds off
 		_delay_ms(1000);
-		portLed = 0xFF;
+		portLed = 0xFF;					// all leds on
 		_delay_ms(1000);
 	}
 	
-	if (flag == 0) {
+	if (flag == 0) {					// if no zones were triggered previously
 		t &= 0xF0;
 	}
 	
 	portLed = t;
-}
-
-void passblink() {
-	portLed &= 0x0F;
-	portLed |= output;
-	_delay_ms(50);
 }
 
 void released() {
@@ -98,6 +85,8 @@ void colFound() {
 	released();
 	
 	output = *(table+temp2);
+	
+	/* display what key is pressed */
 	portLed &= 0xF0;
 	portLed |= output;
 }
@@ -174,18 +163,18 @@ void passcodeEntry(uint8_t state) {
 		
 		if (state == 1) {								// if in armed state, check if any zone keys are pressed ( A, B, C, D )
 			switch (output) {
+				case 14:
+					errorBlink(); return;
+				case 15:
+					errorBlink(); return;
 				case 10:
-					triggerZone(0, t);
-					return;
+					triggerZone(0, t); return;
 				case 11:
-					triggerZone(1, t);
-					return;
+					triggerZone(1, t); return;
 				case 12:
-					triggerZone(2, t);
-					return;
+					triggerZone(2, t); return;
 				case 13:
-					triggerZone(3, t);
-					return;
+					triggerZone(3, t); return;
 			}
 		}
 		
