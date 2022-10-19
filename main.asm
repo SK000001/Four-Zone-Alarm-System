@@ -1,4 +1,3 @@
-; Define variables.
 .def  temp  = r16
 .def temp2 = r17
 .def t = r18
@@ -67,7 +66,7 @@ passcodeEntryDisarm:
 	breq passcodeReset
 
 	cpi output, 10
-	brge disarmedState
+	brge disarmedState // Is this needed?
 
 	push output // push to passcode Input
 	inc count
@@ -78,11 +77,6 @@ passcodeReset:
 	rjmp loop
 
 passcodeEntryArm:
-	in t, PINB
-	ldi temp, 16
-	mul t, temp
-	clr temp
-
 	cpi count, 6
 	breq passcodeVerification
 
@@ -90,19 +84,19 @@ passcodeEntryArm:
 
 	ldi temp2, 0
 	cpi output, 10
-	breq PreTriggerZone
+	breq triggerZone1
 
 	ldi temp2, 1
 	cpi output, 11
-	breq PreTriggerZone
+	breq triggerZone2
 
 	ldi temp2, 2
 	cpi output, 12
-	breq PreTriggerZone
+	breq triggerZone3
 
 	ldi temp2, 3
 	cpi output, 13
-	breq PreTriggerZone
+	breq triggerZone4
 
 	push output // push to passcode Input
 	inc count
@@ -126,65 +120,49 @@ disarmedState:
 	out PORTB, output
 	rjmp loop
 
-PreTriggerZone:				; t = prevZones and temp2 = Zone
-	cpi flag, 1
-	breq TriggerZone
+TriggerZone1:
+	rcall triggerStrobe
+	ldi temp, 0
+	ldi temp, 0x61
+	out PORTB, temp
+	breq passcodeEntryArm
 
-	ldi flag, 0x20
-	in output, PORTB
-	eor output, flag
-	out PORTB, output
+TriggerZone2:
+	ldi temp, 0
+	ldi temp, 0x62
+	rcall triggerStrobe
+	out PORTB, temp
+	breq passcodeEntryArm
 
-	ldi flag, 1
+TriggerZone3:
+	rcall triggerStrobe
+	ldi temp, 0
+	ldi temp, 0x64
+	out PORTB, temp
+	breq passcodeEntryArm
 
-TriggerZone:
-	ldi count, 10
-	call triggerStrobe
-	
-	ldi count, 0xF0
-	in output, PORTB
-	and output, count
 
-	lsr t
-	lsr t
-	lsr t
-	lsr t
-
-	or output, temp
-
-	ldi count, 1
-
-TriggerCertainZone:
-	cpi temp2, 0
-	breq postTriggerZone
-
-	lsl count
-
-	dec temp2
-	rjmp TriggerCertainZone
-
-postTriggerZone:
-	eor output, count
-	out PORTB, output
-
-	in output, PINB
-	
-	rjmp loop
+TriggerZone4:
+	rcall triggerStrobe
+	ldi temp, 0
+	ldi temp, 0x68
+	out PORTB, temp
+	breq passcodeEntryArm
 
 triggerStrobe:
 	in output, PORTB
-	push flag
-	ldi flag, 16
+	push flg
+	ldi flg, 16
 
-	eor output, flag
+	eor output, flg
 	out PORTB, output
 
-	pop flag
+	pop flg
 
 	rcall Delay
 
 	dec count
-	cpi count, 1
+	cpi count, 0
 	brne triggerStrobe
 	RET
 	
@@ -231,7 +209,6 @@ ReadKP:
 colFound:
 	call released
 	call H2DEC
-
 	RET
 
 released:
@@ -248,15 +225,6 @@ H2Dec:
 	ADC ZH, r0						; r31 = r31 + r0 + carryflg
 
 	lpm output, Z
-
-	in temp, PORTB
-	ldi temp2, 0xF0
-	and temp, temp2
-	out PORTB, temp
-	nop
-	in temp, PORTB
-	or temp, output
-	out PORTB, temp
 
 	RET
 
@@ -293,14 +261,14 @@ tbl:
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
-  .db 255, 255, 255, 255, 255, 255, 255, 13, 255, 255, 255,   12, 255, 11, 10,  255
+.db 255, 255, 255, 255, 255, 255, 255,  13, 255, 255, 255,  12, 255,  11,  10, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
-  .db 255, 255, 255, 255, 255, 255, 255, 15, 255, 255, 255,    9, 255, 6, 3,   255
+.db 255, 255, 255, 255, 255, 255, 255,  15, 255, 255, 255,   9, 255,   6,   3, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
-  .db 255, 255, 255, 255, 255, 255, 255, 0, 255, 255, 255,    8, 255, 5, 2,   255
-  .db 255, 255, 255, 255, 255, 255, 255, 14, 255, 255, 255,    7, 255, 4, 1,   255
+.db 255, 255, 255, 255, 255, 255, 255,   0, 255, 255, 255,   8, 255,   5,   2, 255
+.db 255, 255, 255, 255, 255, 255, 255,  14, 255, 255, 255,   7, 255,   4,   1, 255
 .db 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255
 
 passcode:
